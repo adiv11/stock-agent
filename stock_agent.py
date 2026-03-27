@@ -8,7 +8,7 @@ Sends daily email at 5 AM IST with:
 """
 
 import yfinance as yf
-import os, re, smtplib, json, requests
+import os, re, smtplib, json, requests, time
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -74,29 +74,35 @@ NIFTY_SMALLCAP = [
 #  SECTION 1 — STOCK DATA
 # ─────────────────────────────────────────────────────────────
 def fetch_stock_changes(tickers):
-    symbols = [f"{t}.NS" for t in tickers]
-    try:
-        data = yf.download(symbols, period="5d", progress=False, auto_adjust=True)
-        results = []
-        for ticker, symbol in zip(tickers, symbols):
-            try:
-                close = data["Close"][symbol].dropna()
-                if len(close) < 2:
+    results = []
+    batch_size = 10
+    for i in range(0, len(tickers), batch_size):
+        batch = tickers[i:i+batch_size]
+        symbols = [f"{t}.NS" for t in batch]
+        try:
+            data = yf.download(symbols, period="5d", progress=False, auto_adjust=True)
+            for ticker, symbol in zip(batch, symbols):
+                try:
+                    if len(symbols) == 1:
+                        close = data["Close"].dropna()
+                    else:
+                        close = data["Close"][symbol].dropna()
+                    if len(close) < 2:
+                        continue
+                    prev, last = float(close.iloc[-2]), float(close.iloc[-1])
+                    pct = ((last - prev) / prev) * 100
+                    results.append({
+                        "ticker": ticker,
+                        "prev_close": round(prev, 2),
+                        "last_close": round(last, 2),
+                        "pct_change": round(pct, 2),
+                    })
+                except Exception:
                     continue
-                prev, last = float(close.iloc[-2]), float(close.iloc[-1])
-                pct = ((last - prev) / prev) * 100
-                results.append({
-                    "ticker": ticker,
-                    "prev_close": round(prev, 2),
-                    "last_close": round(last, 2),
-                    "pct_change": round(pct, 2),
-                })
-            except Exception:
-                continue
-        return sorted(results, key=lambda x: x["pct_change"])
-    except Exception as e:
-        print(f"Stock fetch error: {e}")
-        return []
+        except Exception as e:
+            print(f"Batch fetch error: {e}")
+        time.sleep(2)
+    return sorted(results, key=lambda x: x["pct_change"])
 
 
 def get_index_performance():
@@ -251,8 +257,6 @@ def get_ai_analysis(index_perf, falling_stocks, gold_silver, div_data):
     Calls Gemini 2.0 Flash with Google Search grounding.
     Returns beginner-friendly plain-English analysis.
     """
-    genai.configure(api_key=CONFIG["gemini_api_key"])
-
     # Build context for Gemini
     top_fallers = (falling_stocks.get("nifty50", []) + falling_stocks.get("next50", []))
     top_fallers = sorted(top_fallers, key=lambda x: x["pct_change"])[:8]
