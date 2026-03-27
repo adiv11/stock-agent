@@ -451,26 +451,37 @@ RULES FOR YOUR ADVICE:
 (One sentence)
 """
 
+    # Try multiple common model names to avoid 404 errors in different regions
+    models_to_try = ["gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro", "gemini-pro"]
+    
+    for model_name in models_to_try:
+        try:
+            print(f"  🤖 Trying AI model: {model_name}...")
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.3,
+                    max_output_tokens=1000,
+                ),
+            )
+            if response and response.text:
+                print(f"  ✅ Gemini AI SUCCESS with {model_name}")
+                return response.text
+        except Exception as e:
+            print(f"  ⚠️ {model_name} failed: {e}")
+            continue
+
+    print("❌ All AI models failed. Using backup fallback analysis.")
+    # Extra debug: list ALL available models so we can see the exact names
     try:
-        # Reverting to the most stable model name for Gemini 1.5 Flash
-        response = client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.3,
-                max_output_tokens=1000,
-            ),
-        )
-        if response.text:
-            print("✅ Gemini AI Analysis SUCCESS")
-            return response.text
-        else:
-            print("⚠️ Gemini returned empty response")
-            return generate_fallback_analysis(index_perf, top_fallers, gold_silver)
+        print("🔍 Available models in your project:")
+        for m in client.models.list():
+            print(f"  - {m.name}")
     except Exception as e:
-        print(f"❌ Gemini AI Error: {type(e).__name__} - {e}")
-        # If it's a 401/403, the user's dashboard will show 0 success
-        return generate_fallback_analysis(index_perf, top_fallers, gold_silver)
+        print(f"  Could not list models: {e}")
+
+    return generate_fallback_analysis(index_perf, top_fallers, gold_silver)
 
 
 def generate_fallback_analysis(index_perf, top_fallers, gold_silver):
