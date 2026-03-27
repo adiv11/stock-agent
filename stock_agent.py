@@ -107,19 +107,30 @@ def download_bhavcopy_by_date(target_date):
     for _ in range(5):
         if candidate.weekday() < 5:
             date_str = candidate.strftime("%Y%m%d")
-            # Try both possible NSE URL patterns (_F_0000 and _0000)
-            for suffix in ["_F_0000", "_0000"]:
-                url = f"https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date_str}{suffix}.csv.zip"
+            date_dmy = candidate.strftime("%d%m%Y")
+            # Try three possible NSE URL patterns
+            urls = [
+                f"https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip",
+                f"https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date_str}_0000.csv.zip",
+                f"https://www.nseindia.com/api/reports?archives=[%7B%22name%22:%22Full%20Bhavcopy%20and%20Security%20Deliverable%20data%22,%22type%22:%22archives%22,%22category%22:%22capital-market%22,%22section%22:%22equities%22%7D]&date={candidate.strftime('%d-%b-%Y')}&type=equities&mode=single",
+            ]
+            for url in urls:
                 try:
+                    u_short = str(url)[:75]
+                    print(f"  Trying: {u_short}...")
                     resp = session.get(url, timeout=15)
                     if resp.status_code == 200 and len(resp.content) > 5000:
+                        print(f"  ✅ SUCCESS: Found data for {candidate}")
                         z = zipfile.ZipFile(io.BytesIO(resp.content))
                         name = z.namelist()[0]
                         df = pd.read_csv(z.open(name))
                         return df, candidate
-                except: pass
+                    else:
+                        print(f"  ❌ Failed: Status {resp.status_code}, Length {len(resp.content)}")
+                except Exception as e:
+                    print(f"  ⚠️ Request Error: {e}")
         candidate -= timedelta(days=1)
-        time.sleep(0.3)
+        time.sleep(0.5)
     return None, None
 
 
@@ -440,17 +451,24 @@ RULES FOR YOUR ADVICE:
 """
 
     try:
+        # Try 'gemini-1.5-flash-latest' for better compatibility
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-1.5-flash-latest",
             contents=prompt,
             config=types.GenerateContentConfig(
-                temperature=0.4,
+                temperature=0.3,
                 max_output_tokens=1000,
             ),
         )
-        return response.text if response.text else generate_fallback_analysis(index_perf, top_fallers, gold_silver)
+        if response.text:
+            print("✅ Gemini AI Analysis SUCCESS")
+            return response.text
+        else:
+            print("⚠️ Gemini returned empty response")
+            return generate_fallback_analysis(index_perf, top_fallers, gold_silver)
     except Exception as e:
-        print(f"Gemini error: {e}")
+        print(f"❌ Gemini AI Error: {type(e).__name__} - {e}")
+        # If it's a 401/403, the user's dashboard will show 0 success
         return generate_fallback_analysis(index_perf, top_fallers, gold_silver)
 
 
