@@ -1,0 +1,35 @@
+name: 🌅 Morning Investment Alert
+
+on:
+  schedule:
+    #  5:00 AM IST  =  11:30 PM UTC (previous night)
+    #  Runs Monday to Friday (market days only)
+    - cron: '30 23 * * 0-4'
+
+  # This button lets you run it manually from GitHub anytime (great for testing)
+  workflow_dispatch:
+
+jobs:
+  send-morning-brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 📥 Get the code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: 🚀 Run the agent
+        env:
+          GMAIL_SENDER:   ${{ secrets.GMAIL_SENDER }}
+          GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
+          GMAIL_RECEIVER: ${{ secrets.GMAIL_RECEIVER }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python stock_agent.py
