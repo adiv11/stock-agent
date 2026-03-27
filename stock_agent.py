@@ -232,12 +232,12 @@ def get_gold_silver_prices():
                     result['gold_jaipur_24k'] = val
                     result['gold_inr_10g'] = round(val * 0.95, 0)  # approx intl base
 
-            # Try to get yesterday's rate for % change
-            m22_y = re.findall(r'([\d,]{5,8})', text)
-            # Change % will show in the page
-            pct_match = re.search(r'([+-]?\d+\.?\d*)\s*%', text)
-            if pct_match:
-                result['gold_change_pct'] = float(pct_match.group(1))
+            # % change — only accept realistic values (-20% to +20%)
+            for pct_match in re.finditer(r'([+-]?\d{1,2}\.\d+)\s*%', text):
+                val = float(pct_match.group(1))
+                if -20 < val < 20 and val != 0:
+                    result['gold_change_pct'] = val
+                    break
 
         time.sleep(1)
 
@@ -253,9 +253,11 @@ def get_gold_silver_prices():
                     result['silver_jaipur_kg'] = val
                     result['silver_inr_kg'] = round(val * 0.97, 0)
                     break
-            pct_match2 = re.search(r'([+-]?\d+\.?\d*)\s*%', text2)
-            if pct_match2:
-                result['silver_change_pct'] = float(pct_match2.group(1))
+            for pct_match2 in re.finditer(r'([+-]?\d{1,2}\.\d+)\s*%', text2):
+                val2 = float(pct_match2.group(1))
+                if -20 < val2 < 20 and val2 != 0:
+                    result['silver_change_pct'] = val2
+                    break
 
     except Exception as e:
         print(f"Gold/Silver error: {e}")
@@ -386,10 +388,56 @@ Write in a warm, encouraging tone. The reader is just starting their investment 
                 max_output_tokens=1000,
             ),
         )
-        return response.text if response.text else "AI analysis not available today."
+        return response.text if response.text else generate_fallback_analysis(index_perf, falling_stocks, gold_silver)
     except Exception as e:
         print(f"Gemini error: {e}")
-        return f"AI analysis unavailable today. Please check tomorrow's email for full analysis."
+        return generate_fallback_analysis(index_perf, falling_stocks, gold_silver)
+
+
+def generate_fallback_analysis(index_perf, falling_stocks, gold_silver):
+    """Pure Python analysis when Gemini is unavailable"""
+    nifty = index_perf.get("Nifty 50", {})
+    chg = nifty.get("change", 0)
+    val = nifty.get("value", 0)
+
+    if chg < -1.5:
+        why = f"The market had a rough day yesterday, with Nifty falling {abs(chg):.2f}%. This often happens due to global sell-offs, rising interest rate fears, or foreign investors pulling money out. It feels scary but these dips are a normal part of the market cycle."
+        buy = "When the market falls this much, it can actually be a good time to buy quality stocks at a lower price. Consider adding to existing holdings rather than panic selling. If you don't have stocks yet, start small with a Nifty 50 ETF."
+        mood = "Market may open cautiously today — watch for recovery signals after yesterday's fall."
+    elif chg < 0:
+        why = f"The market dipped slightly yesterday, with Nifty down {abs(chg):.2f}%. This is a minor correction and very normal. Markets don't go up every single day — small dips keep things healthy."
+        buy = "A small dip like this is nothing to worry about. If you were planning to invest, this is a fine time to do so. Stick to your SIP plan and don't try to time the market."
+        mood = "Market likely to start steady today — yesterday's minor fall shouldn't cause big concern."
+    else:
+        why = f"The market did well yesterday, with Nifty up {chg:.2f}%. Positive days like this are encouraging for long-term investors. Markets rise when companies are doing well and investor confidence is high."
+        buy = "The market is in a positive mood. If you've been waiting to invest, a rising market shows confidence — but don't rush in with all your money at once. A SIP approach always wins."
+        mood = "Market likely to continue positively today — good momentum from yesterday."
+
+    top = sorted(falling_stocks.get("nifty50", []) + falling_stocks.get("next50", []), key=lambda x: x["pct_change"])[:3]
+    stock_note = ""
+    if top and top[0]["pct_change"] < -1:
+        names = ", ".join([s["ticker"] for s in top[:3]])
+        stock_note = f" Stocks like {names} saw notable falls and may be worth watching for a potential bounce."
+
+    gold_note = "Gold data unavailable today."
+    if gold_silver.get("gold_jaipur_22k"):
+        g22 = gold_silver["gold_jaipur_22k"]
+        gold_note = f"Gold 22K in Jaipur is around ₹{g22:,.0f} per 10 grams. For most beginners, a Gold ETF (like GOLDBEES) is better than physical gold — no making charges, no storage worries, and you can buy even ₹500 worth."
+
+    return f"""== WHY DID THE MARKET MOVE? ==
+{why}
+
+== IS THIS A GOOD TIME TO BUY STOCKS? ==
+{buy}{stock_note}
+
+== GOLD & SILVER UPDATE ==
+{gold_note} Sovereign Gold Bonds are the best option if available — they give 2.5% extra interest per year on top of gold's price rise.
+
+== TODAY'S SIMPLE INVESTMENT TIP ==
+Start a SIP of ₹500–₹1,000 per month in NIFTYBEES (Nifty 50 ETF) through Groww or Zerodha. This one habit, done consistently, beats most other strategies for a beginner. Set it up once and forget it.
+
+== MARKET MOOD FOR TODAY ==
+{mood}"""
 
 
 # ─────────────────────────────────────────────────────────────
@@ -405,21 +453,29 @@ def pct_badge(pct):
 
 def stock_table(stocks, threshold):
     filtered = [s for s in stocks if s["pct_change"] <= threshold]
+    # If no stocks crossed threshold, show top 5 fallers anyway
     if not filtered:
-        return '<p style="color:#27ae60;font-size:13px;margin:6px 0">✅ No stocks crossed this threshold yesterday — market held up here.</p>'
+        top_fallers = sorted(stocks, key=lambda x: x["pct_change"])[:5]
+        if not top_fallers:
+            return '<p style="color:#27ae60;font-size:13px;margin:6px 0">✅ No data available for this group.</p>'
+        note = f'<p style="color:#27ae60;font-size:12px;margin:0 0 6px">✅ No stocks fell beyond {abs(threshold)}% threshold — showing top 5 movers instead.</p>'
+        display = top_fallers
+    else:
+        note = ""
+        display = filtered
     rows = "".join(f"""
     <tr style="border-bottom:1px solid #fce8e8">
       <td style="padding:8px 10px;font-weight:600;font-size:13px">{s['ticker']}</td>
       <td style="padding:8px 10px;font-size:13px;text-align:right">₹{s['last_close']:,.2f}</td>
       <td style="padding:8px 10px;text-align:right">{pct_badge(s['pct_change'])}</td>
       <td style="padding:8px 10px;font-size:12px;color:#888;text-align:right">was ₹{s['prev_close']:,.2f}</td>
-    </tr>""" for s in filtered)
-    return f"""
-    <table style="width:100%;border-collapse:collapse;margin-top:8px">
+    </tr>""" for s in display)
+    return note + f"""
+    <table style="width:100%;border-collapse:collapse;margin-top:4px">
       <tr style="background:#c0392b;color:white;font-size:12px">
         <th style="padding:8px 10px;text-align:left">Stock</th>
         <th style="padding:8px 10px;text-align:right">Price</th>
-        <th style="padding:8px 10px;text-align:right">Fall</th>
+        <th style="padding:8px 10px;text-align:right">Change</th>
         <th style="padding:8px 10px;text-align:right">Previous</th>
       </tr>{rows}
     </table>"""
