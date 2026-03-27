@@ -13,8 +13,8 @@ from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from zoneinfo import ZoneInfo
-import google.generativeai as genai
-from google.generativeai.types import Tool, GenerateContentConfig
+from google import genai
+from google.genai import types
 
 # ─────────────────────────────────────────────────────────────
 #  CONFIG  (reads from GitHub Secrets / env vars)
@@ -313,20 +313,25 @@ Write in a warm, encouraging tone. The reader is just starting their investment 
 """
 
     try:
-        model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash",
-            tools=[Tool(google_search={})]
-        )
-        response = model.generate_content(
-            prompt,
-            generation_config=GenerateContentConfig(temperature=0.4, max_output_tokens=1200)
+        client = genai.Client(api_key=CONFIG["gemini_api_key"])
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+                temperature=0.4,
+                max_output_tokens=1200,
+            ),
         )
         return response.text if response.text else "AI analysis not available today."
     except Exception as e:
         print(f"Gemini error: {e}")
         try:
-            model = genai.GenerativeModel("gemini-2.0-flash")
-            response = model.generate_content(prompt)
+            client = genai.Client(api_key=CONFIG["gemini_api_key"])
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+            )
             return response.text + "\n\n*(Live news search was unavailable today)*"
         except Exception as e2:
             return f"AI analysis unavailable: {e2}"
