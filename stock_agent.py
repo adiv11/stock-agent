@@ -116,7 +116,8 @@ def download_bhavcopy_by_date(target_date):
             ]
             for url in urls:
                 try:
-                    u_short = str(url)[:75]
+                    current_url = str(url)
+                    u_short = current_url[:75]
                     print(f"  Trying: {u_short}...")
                     resp = session.get(url, timeout=15)
                     if resp.status_code == 200 and len(resp.content) > 5000:
@@ -451,9 +452,9 @@ RULES FOR YOUR ADVICE:
 """
 
     try:
-        # Try 'gemini-1.5-flash-latest' for better compatibility
+        # Reverting to the most stable model name for Gemini 1.5 Flash
         response = client.models.generate_content(
-            model="gemini-1.5-flash-latest",
+            model="gemini-1.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.3,
