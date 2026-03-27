@@ -451,36 +451,25 @@ RULES FOR YOUR ADVICE:
 (One sentence)
 """
 
-    # Try multiple common model names to avoid 404 errors in different regions
-    models_to_try = ["gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro", "gemini-pro"]
-    
-    for model_name in models_to_try:
-        try:
-            print(f"  🤖 Trying AI model: {model_name}...")
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.3,
-                    max_output_tokens=1000,
-                ),
-            )
-            if response and response.text:
-                print(f"  ✅ Gemini AI SUCCESS with {model_name}")
-                return response.text
-        except Exception as e:
-            print(f"  ⚠️ {model_name} failed: {e}")
-            continue
-
-    print("❌ All AI models failed. Using backup fallback analysis.")
-    # Extra debug: list ALL available models so we can see the exact names
     try:
-        print("🔍 Available models in your project:")
-        for m in client.models.list():
-            print(f"  - {m.name}")
+        # Verified available model for your project
+        model_name = "gemini-2.0-flash"
+        print(f"  🤖 Requesting AI analysis from {model_name}...")
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.3,
+                max_output_tokens=1000,
+            ),
+        )
+        if response and response.text:
+            print(f"  ✅ Gemini AI Analysis SUCCESS")
+            return response.text
     except Exception as e:
-        print(f"  Could not list models: {e}")
+        print(f"  ❌ Gemini AI Error: {e}")
 
+    print("⚠️ Using backup fallback analysis.")
     return generate_fallback_analysis(index_perf, top_fallers, gold_silver)
 
 
