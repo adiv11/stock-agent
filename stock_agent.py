@@ -107,14 +107,17 @@ def download_bhavcopy_by_date(target_date):
     for _ in range(5):
         if candidate.weekday() < 5:
             date_str = candidate.strftime("%Y%m%d")
-            url = f"https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip"
-            try:
-                resp = session.get(url, timeout=15)
-                if resp.status_code == 200 and len(resp.content) > 5000:
-                    z = zipfile.ZipFile(io.BytesIO(resp.content))
-                    df = pd.read_csv(z.open(z.namelist()[0]))
-                    return df, candidate
-            except: pass
+            # Try both possible NSE URL patterns (_F_0000 and _0000)
+            for suffix in ["_F_0000", "_0000"]:
+                url = f"https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date_str}{suffix}.csv.zip"
+                try:
+                    resp = session.get(url, timeout=15)
+                    if resp.status_code == 200 and len(resp.content) > 5000:
+                        z = zipfile.ZipFile(io.BytesIO(resp.content))
+                        name = z.namelist()[0]
+                        df = pd.read_csv(z.open(name))
+                        return df, candidate
+                except: pass
         candidate -= timedelta(days=1)
         time.sleep(0.3)
     return None, None
@@ -694,27 +697,27 @@ def build_email(index_perf, falling, gold_silver, div_data, ai_text, trade_date)
 
     <div style="margin-bottom:14px">
       <div style="font-size:13px;font-weight:600;color:#c0392b;margin-bottom:4px">🔴 Nifty 50 Losers</div>
-      {stock_table(falling.get("nifty50", []), -0.5)}
+      {stock_table(falling.get("nifty50", []), 0.0)}
     </div>
 
     <div style="margin-bottom:14px">
       <div style="font-size:13px;font-weight:600;color:#d35400;margin-bottom:4px">🟠 Nifty 100 Losers</div>
-      {stock_table(falling.get("nifty100", []), -0.8)}
+      {stock_table(falling.get("nifty100", []), 0.0)}
     </div>
 
     <div style="margin-bottom:14px">
       <div style="font-size:13px;font-weight:600;color:#e67e22;margin-bottom:4px">🟡 Next 50 Losers</div>
-      {stock_table(falling.get("next50", []), -1.0)}
+      {stock_table(falling.get("next50", []), 0.0)}
     </div>
 
     <div style="margin-bottom:14px">
       <div style="font-size:13px;font-weight:600;color:#8e44ad;margin-bottom:4px">🟣 Small Cap Losers</div>
-      {stock_table(falling.get("smallcap", []), -2.0)}
+      {stock_table(falling.get("smallcap", []), 0.0)}
     </div>
 
     <div style="margin-bottom:14px">
       <div style="font-size:13px;font-weight:600;color:#2980b9;margin-bottom:4px">🔵 Mid Cap Losers</div>
-      {stock_table(falling.get("midcap", []), -1.5)}
+      {stock_table(falling.get("midcap", []), 0.0)}
     </div>
 
     <h2 style="font-size:15px;color:#1a3a6b;margin:0 0 4px">🌈 Other Ways to Invest — Not Just Stocks</h2>
@@ -800,11 +803,11 @@ def run():
     nifty_100_all = list(set(NIFTY_50 + NIFTY_NEXT_50))
     
     falling = {
-        "nifty50":  fetch_top_losers(dfs, whitelist=NIFTY_50, limit=5),
-        "nifty100": fetch_top_losers(dfs, whitelist=nifty_100_all, limit=5),
-        "next50":   fetch_top_losers(dfs, whitelist=NIFTY_NEXT_50, limit=5),
-        "midcap":   fetch_top_losers(dfs, whitelist=NIFTY_MIDCAP, limit=5),
-        "smallcap": fetch_top_losers(dfs, whitelist=NIFTY_SMALLCAP, limit=5),
+        "nifty50":  fetch_top_losers(dfs, whitelist=NIFTY_50, limit=10),
+        "nifty100": fetch_top_losers(dfs, whitelist=nifty_100_all, limit=10),
+        "next50":   fetch_top_losers(dfs, whitelist=NIFTY_NEXT_50, limit=10),
+        "midcap":   fetch_top_losers(dfs, whitelist=NIFTY_MIDCAP, limit=10),
+        "smallcap": fetch_top_losers(dfs, whitelist=NIFTY_SMALLCAP, limit=10),
     }
 
     print("🥇 Fetching Gold & Silver from bullions.co.in...")
