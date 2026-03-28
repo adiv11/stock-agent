@@ -82,36 +82,36 @@ NIFTY_SMALLCAP = [
 #  MUTUAL FUNDS (Direct Growth)
 # ─────────────────────────────────────────────────────────────
 MUTUAL_FUNDS = {
-    "Capital Market Index": [
-        "Motilal Oswal Nifty Capital Market Index Fund",
-        "Tata Nifty Capital Markets Index Fund"
-    ],
-    "Resources & New Energy": [
-        "DSP Natural Resources & New Energy Fund"
-    ],
-    "PSU Equity": [
-        "SBI PSU Fund",
-        "Aditya Birla Sun Life PSU Equity Fund"
-    ],
-    "Large & Midcap": [
-        "Motilal Oswal Large and Midcap Fund",
-        "Invesco India Large & MidCap Fund",
-        "Bandhan Large & Mid Cap Fund"
-    ],
-    "Smallcap": [
-        "Invesco India Smallcap Fund",
-        "Union Small Cap Fund"
-    ],
-    "Multicap / Flexicap": [
-        "Kotak Multicap Fund",
-        "Edelweiss Flexi Cap Fund",
-        "ITI Flexi Cap Fund"
-    ],
-    "Thematic / International": [
-        "DSP World Gold Mining Overseas Equity Omni FoF Fund",
-        "Mirae Asset NYSE FANG+ ETF Fund of Fund",
-        "Mirae Asset S&P 500 Top 50 ETF Fund of Fund"
-    ]
+    "Capital Market Index": {
+        "Motilal Oswal Nifty Capital Market Index Fund": 153138,
+        "Tata Nifty Capital Markets Index Fund": 152951
+    },
+    "Resources & New Energy": {
+        "DSP Natural Resources & New Energy Fund": 119028
+    },
+    "PSU Equity": {
+        "SBI PSU Fund": 119732,
+        "Aditya Birla Sun Life PSU Equity Fund": 147844
+    },
+    "Large & Midcap": {
+        "Motilal Oswal Large and Midcap Fund": 147704,
+        "Invesco India Large & MidCap Fund": 120357,
+        "Bandhan Large & Mid Cap Fund": 118419
+    },
+    "Smallcap": {
+        "Invesco India Smallcap Fund": 145137,
+        "Union Small Cap Fund": 129649
+    },
+    "Multicap / Flexicap": {
+        "Kotak Multicap Fund": 149185,
+        "Edelweiss Flexi Cap Fund": 140353,
+        "ITI Flexi Cap Fund": 151379
+    },
+    "Thematic / International": {
+        "DSP World Gold Mining Overseas Equity Omni FoF Fund": 119277,
+        "Mirae Asset NYSE FANG+ ETF Fund of Fund": 148928,
+        "Mirae Asset S&P 500 Top 50 ETF Fund of Fund": 149170
+    }
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -322,11 +322,11 @@ def get_index_performance():
 # ─────────────────────────────────────────────────────────────
 def get_gold_silver_prices():
     result = {
-        "gold_inr_10g": None, "silver_inr_kg": None,
-        "gold_jaipur_22k": None, "gold_jaipur_24k": None,
-        "silver_jaipur_kg": None,
-        "gold_change_pct": None, "silver_change_pct": None,
-        "usd_inr": None,
+        "gold_inr_10g": 0.0, "silver_inr_kg": 0.0,
+        "gold_jaipur_22k": 0.0, "gold_jaipur_24k": 0.0,
+        "silver_jaipur_kg": 0.0,
+        "gold_change_pct": 0.0, "silver_change_pct": 0.0,
+        "usd_inr": 0.0,
     }
     try:
         # ── Jaipur Bullions (Local Expert Source) ──
@@ -693,79 +693,85 @@ def parse_ai_sections(text):
     return html
 
 
-def fetch_amfi_navs():
-    """Download and parse AMFI NAV data for requested funds (Direct Growth)"""
-    url = "https://www.amfiindia.com/spages/NAVAll.txt"
-    print("  📥 Fetching latest Mutual Fund NAVs from AMFI...")
-    try:
-        response = requests.get(url, headers=HEADERS, timeout=15)
-        response.raise_for_status()
-        lines = response.text.splitlines()
-        
-        mf_results = {}
-        for category, funds in MUTUAL_FUNDS.items():
-            mf_results[category] = []
-            for fund_base_name in funds:
-                found = False
-                fb_upper = fund_base_name.upper()
-                for line in lines:
-                    if ';' not in line: continue
-                    parts = line.split(';')
-                    if len(parts) < 5: continue
-                    
-                    scheme_name = parts[3]
-                    sn_upper = scheme_name.upper()
-                    
-                    if fb_upper in sn_upper and "DIRECT" in sn_upper and "GROWTH" in sn_upper:
-                        mf_results[category].append({
-                            "name": scheme_name,
-                            "nav": parts[4],
-                            "date": parts[5] if len(parts) > 5 else "N/A"
-                        })
-                        found = True
+def fetch_mf_returns():
+    """Fetch latest NAV and historical returns (1D, 30D) from mfapi.in"""
+    print("  📥 Fetching latest Mutual Fund returns from mfapi.in...")
+    mf_results = {}
+    
+    for category, funds in MUTUAL_FUNDS.items():
+        mf_results[category] = []
+        for fund_name, code in funds.items():
+            url = f"https://api.mfapi.in/mf/{code}"
+            try:
+                resp = requests.get(url, timeout=12)
+                data = resp.json()
+                if not data or "data" not in data or len(data["data"]) < 2:
+                    continue
+                
+                history = data["data"]
+                curr_nav = float(history[0]["nav"])
+                prev_nav = float(history[1]["nav"])
+                
+                # 1-Day Change
+                d1_pct = ((curr_nav - prev_nav) / prev_nav) * 100
+                
+                # Past 30 Days Change
+                d30_pct = 0.0
+                today_dt = datetime.strptime(history[0]["date"], "%d-%m-%Y")
+                target_dt = today_dt - timedelta(days=30)
+                
+                for entry in history[1:]:
+                    edt = datetime.strptime(entry["date"], "%d-%m-%Y")
+                    if edt <= target_dt:
+                        old_nav = float(entry["nav"])
+                        d30_pct = ((curr_nav - old_nav) / old_nav) * 100
                         break
                 
-                if not found:
-                    for line in lines:
-                        if ';' not in line: continue
-                        parts = line.split(';')
-                        if len(parts) < 5: continue
-                        sn_upper = parts[3].upper()
-                        if fb_upper in sn_upper and ("DIRECT" in sn_upper or "GROWTH" in sn_upper):
-                            mf_results[category].append({
-                                "name": parts[3],
-                                "nav": parts[4],
-                                "date": parts[5] if len(parts) > 5 else "N/A"
-                            })
-                            found = True
-                            break
-        return mf_results
-    except Exception as e:
-        print(f"  ❌ AMFI Error: {e}")
-        return {}
+                mf_results[category].append({
+                    "name": fund_name,
+                    "nav": curr_nav,
+                    "d1": d1_pct,
+                    "d30": d30_pct,
+                    "date": history[0]["date"]
+                })
+            except Exception as e:
+                print(f"  ⚠️ Error fetching {fund_name}: {e}")
+    return mf_results
 
 
 def mf_table_section(mf_data):
     if not mf_data:
         return '<p style="color:#888;font-size:12px">Mutual Fund data unavailable.</p>'
     
-    sections = []
+    html = ""
     for category, funds in mf_data.items():
         if not funds: continue
-        rows = "".join([f"""
-        <tr style="border-bottom:1px solid #eef2f7">
-          <td style="padding:6px 8px;font-size:12px;color:#2c3e50">{f['name']}</td>
-          <td style="padding:6px 8px;font-size:13px;font-weight:bold;text-align:right">₹{f['nav']}</td>
-          <td style="padding:6px 8px;font-size:11px;color:#888;text-align:right">{f['date']}</td>
-        </tr>""" for f in funds])
+        rows = ""
+        for f in funds:
+            rows += f"""
+            <tr style="border-bottom:1px solid #eef2f7">
+              <td style="padding:8px 10px;font-size:12px;color:#2c3e50">{f['name']}</td>
+              <td style="padding:8px 10px;font-size:13px;font-weight:bold;text-align:right">₹{f['nav']:.2f}</td>
+              <td style="padding:8px 10px;text-align:right">{pct_badge(f['d1'])}</td>
+              <td style="padding:8px 10px;text-align:right">{pct_badge(f['d30'])}</td>
+            </tr>"""
         
-        sections.append(f"""
-        <div style="margin-bottom:12px">
-          <div style="font-size:12px;font-weight:bold;color:#1e3a8a;background:#dbeafe;padding:4px 8px;border-radius:4px">{category}</div>
-          <table style="width:100%;border-collapse:collapse;margin-top:4px">{rows}</table>
-        </div>""")
-        
-    return "".join(sections)
+        html += f"""
+        <div style="margin-bottom:18px">
+          <div style="font-size:13px;font-weight:700;color:#1e3a8a;background:#eef4ff;padding:6px 10px;border-radius:6px 6px 0 0">
+            🏙️ {category}
+          </div>
+          <table style="width:100%;border-collapse:collapse;border:1px solid #eef4ff;border-top:none">
+            <tr style="background:#f8f9fa;font-size:10px;color:#666;text-transform:uppercase">
+              <th style="padding:6px 10px;text-align:left">Fund Name</th>
+              <th style="padding:6px 10px;text-align:right">NAV</th>
+              <th style="padding:6px 10px;text-align:right">1 Day</th>
+              <th style="padding:6px 10px;text-align:right">Past 30 Days</th>
+            </tr>
+            {rows}
+          </table>
+        </div>"""
+    return html
 
 
 def build_email(index_perf, falling, gold_silver, div_data, mf_data, ai_text, trade_date):
@@ -954,8 +960,8 @@ def run():
     print("🌈 Processing diversification data...")
     div_data = fetch_diversification_data(dfs[0][0])
 
-    print("📊 Fetching Mutual Fund NAVs from AMFI...")
-    mf_data = fetch_amfi_navs()
+    print("📊 Fetching Mutual Fund returns from mfapi.in (1D & 30D)...")
+    mf_data = fetch_mf_returns()
 
     print("🤖 getting Gemini AI analysis...")
     ai_text = get_ai_analysis(index_perf, falling, gold_silver, div_data, mf_data)
