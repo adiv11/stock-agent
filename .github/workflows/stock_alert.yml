@@ -4,7 +4,7 @@ on:
   schedule:
     #  5:00 AM IST  =  11:30 PM UTC (previous night)
     #  8:30 AM IST  =  3:00 AM UTC
-    - cron: '0 3 * * 0-5'
+    - cron: '30 23 * * 0-5'
 
   # This button lets you run it manually from GitHub anytime (great for testing)
   workflow_dispatch:
