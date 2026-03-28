@@ -111,6 +111,11 @@ MUTUAL_FUNDS = {
         "DSP World Gold Mining Overseas Equity Omni FoF Fund": 119277,
         "Mirae Asset NYSE FANG+ ETF Fund of Fund": 148928,
         "Mirae Asset S&P 500 Top 50 ETF Fund of Fund": 149170
+    },
+    "Gold Funds": {
+        "HDFC Gold ETF Fund of Fund Growth": 119132,
+        "SBI Gold Fund": 119788,
+        "ICICI Prudential Gold Savings Fund": 120685
     }
 }
 
@@ -828,6 +833,12 @@ def build_email(index_perf, falling, gold_silver, div_data, mf_data, ai_text, tr
     </p>
     {gold_silver_section(gold_silver)}
 
+    <h2 style="font-size:15px;color:#1e3a8a;margin:22px 0 4px">📈 Mutual Fund NAVs (Direct Growth)</h2>
+    <p style="font-size:12px;color:#888;margin:0 0 8px">
+      Checking your mutual fund NAVs helps you see if your long-term wealth is growing.
+    </p>
+    {mf_table_section(mf_data)}
+
     <h2 style="font-size:15px;color:#2c3e50;margin:22px 0 4px">📉 Stocks That Fell Yesterday</h2>
     <p style="font-size:12px;color:#888;margin:0 0 8px">
       A fall isn't always bad — sometimes it's a chance to buy good companies cheaper.
@@ -858,11 +869,6 @@ def build_email(index_perf, falling, gold_silver, div_data, mf_data, ai_text, tr
       {stock_table(falling.get("midcap", []), 0.0)}
     </div>
 
-    <h2 style="font-size:15px;color:#1e3a8a;margin:22px 0 4px">📈 Mutual Fund NAVs (Direct Growth)</h2>
-    <p style="font-size:12px;color:#888;margin:0 0 8px">
-      Checking your mutual fund NAVs helps you see if your long-term wealth is growing.
-    </p>
-    {mf_table_section(mf_data)}
 
     <h2 style="font-size:15px;color:#1a3a6b;margin:0 0 4px">🌈 Other Ways to Invest — Not Just Stocks</h2>
     <p style="font-size:12px;color:#888;margin:0 0 8px">
