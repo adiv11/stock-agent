@@ -79,6 +79,42 @@ NIFTY_SMALLCAP = [
 ]
 
 # ─────────────────────────────────────────────────────────────
+#  MUTUAL FUNDS (Direct Growth)
+# ─────────────────────────────────────────────────────────────
+MUTUAL_FUNDS = {
+    "Capital Market Index": [
+        "Motilal Oswal Nifty Capital Market Index Fund",
+        "Tata Nifty Capital Markets Index Fund"
+    ],
+    "Resources & New Energy": [
+        "DSP Natural Resources & New Energy Fund"
+    ],
+    "PSU Equity": [
+        "SBI PSU Fund",
+        "Aditya Birla Sun Life PSU Equity Fund"
+    ],
+    "Large & Midcap": [
+        "Motilal Oswal Large and Midcap Fund",
+        "Invesco India Large & MidCap Fund",
+        "Bandhan Large & Mid Cap Fund"
+    ],
+    "Smallcap": [
+        "Invesco India Smallcap Fund",
+        "Union Small Cap Fund"
+    ],
+    "Multicap / Flexicap": [
+        "Kotak Multicap Fund",
+        "Edelweiss Flexi Cap Fund",
+        "ITI Flexi Cap Fund"
+    ],
+    "Thematic / International": [
+        "DSP World Gold Mining Overseas Equity Omni FoF Fund",
+        "Mirae Asset NYSE FANG+ ETF Fund of Fund",
+        "Mirae Asset S&P 500 Top 50 ETF Fund of Fund"
+    ]
+}
+
+# ─────────────────────────────────────────────────────────────
 #  SECTION 1 — NSE BHAVCOPY (reliable stock data)
 # ─────────────────────────────────────────────────────────────
 def get_trading_dates(n=5):
@@ -178,11 +214,11 @@ def fetch_top_losers(dfs, whitelist=None, limit=10):
                 if val > 0: prices.append(val)
         
         # Filter Rules:
-        # 1. Continuous fall check (past snapshots)
-        # SKIP if prices[0] < prices[1] < prices[2]...
-        if len(prices) >= 3:
-            if all(prices[i] < prices[i+1] for i in range(len(prices) - 1)):
-                continue # Skip if it's been falling for months
+        # Skip if price is lower than 60-day or 90-day snapshots (avoid long-term downtrends)
+        if len(prices) >= 3 and prices[0] < prices[2]:
+            continue
+        if len(prices) >= 4 and prices[0] < prices[3]:
+            continue
 
         trend_long = ((prices[0] - prices[1]) / prices[1]) * 100 if len(prices) > 1 else 0
 
@@ -385,7 +421,7 @@ def fetch_diversification_data(df):
 # ─────────────────────────────────────────────────────────────
 #  SECTION 5 — GEMINI AI ANALYSIS (1.5 Flash, no search needed)
 # ─────────────────────────────────────────────────────────────
-def get_ai_analysis(index_perf, falling_data, gold_silver, div_data):
+def get_ai_analysis(index_perf, falling_data, gold_silver, div_data, mf_data):
     client = genai.Client(api_key=CONFIG["gemini_api_key"])
 
     # Collect top 8 fallers across all groups for AI summary
@@ -425,9 +461,11 @@ Yesterday's market data:
 FALLING STOCKS (Snapshot Prices over last 3 months: now, -30d, -60d, -90d):
 {stock_lines}
 
-GOLD & SILVER:
 {gold_line}
 {silver_line}
+
+MUTUAL FUNDS (Latest NAVs):
+{mf_data}
 
 RULES FOR YOUR ADVICE:
 1. Don't suggest stocks that show a continuous downward trend over the 4 snapshots.
@@ -655,7 +693,82 @@ def parse_ai_sections(text):
     return html
 
 
-def build_email(index_perf, falling, gold_silver, div_data, ai_text, trade_date):
+def fetch_amfi_navs():
+    """Download and parse AMFI NAV data for requested funds (Direct Growth)"""
+    url = "https://www.amfiindia.com/spages/NAVAll.txt"
+    print("  📥 Fetching latest Mutual Fund NAVs from AMFI...")
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=15)
+        response.raise_for_status()
+        lines = response.text.splitlines()
+        
+        mf_results = {}
+        for category, funds in MUTUAL_FUNDS.items():
+            mf_results[category] = []
+            for fund_base_name in funds:
+                found = False
+                fb_upper = fund_base_name.upper()
+                for line in lines:
+                    if ';' not in line: continue
+                    parts = line.split(';')
+                    if len(parts) < 5: continue
+                    
+                    scheme_name = parts[3]
+                    sn_upper = scheme_name.upper()
+                    
+                    if fb_upper in sn_upper and "DIRECT" in sn_upper and "GROWTH" in sn_upper:
+                        mf_results[category].append({
+                            "name": scheme_name,
+                            "nav": parts[4],
+                            "date": parts[5] if len(parts) > 5 else "N/A"
+                        })
+                        found = True
+                        break
+                
+                if not found:
+                    for line in lines:
+                        if ';' not in line: continue
+                        parts = line.split(';')
+                        if len(parts) < 5: continue
+                        sn_upper = parts[3].upper()
+                        if fb_upper in sn_upper and ("DIRECT" in sn_upper or "GROWTH" in sn_upper):
+                            mf_results[category].append({
+                                "name": parts[3],
+                                "nav": parts[4],
+                                "date": parts[5] if len(parts) > 5 else "N/A"
+                            })
+                            found = True
+                            break
+        return mf_results
+    except Exception as e:
+        print(f"  ❌ AMFI Error: {e}")
+        return {}
+
+
+def mf_table_section(mf_data):
+    if not mf_data:
+        return '<p style="color:#888;font-size:12px">Mutual Fund data unavailable.</p>'
+    
+    sections = []
+    for category, funds in mf_data.items():
+        if not funds: continue
+        rows = "".join([f"""
+        <tr style="border-bottom:1px solid #eef2f7">
+          <td style="padding:6px 8px;font-size:12px;color:#2c3e50">{f['name']}</td>
+          <td style="padding:6px 8px;font-size:13px;font-weight:bold;text-align:right">₹{f['nav']}</td>
+          <td style="padding:6px 8px;font-size:11px;color:#888;text-align:right">{f['date']}</td>
+        </tr>""" for f in funds])
+        
+        sections.append(f"""
+        <div style="margin-bottom:12px">
+          <div style="font-size:12px;font-weight:bold;color:#1e3a8a;background:#dbeafe;padding:4px 8px;border-radius:4px">{category}</div>
+          <table style="width:100%;border-collapse:collapse;margin-top:4px">{rows}</table>
+        </div>""")
+        
+    return "".join(sections)
+
+
+def build_email(index_perf, falling, gold_silver, div_data, mf_data, ai_text, trade_date):
     today     = datetime.now(IST).strftime("%A, %d %B %Y")
     nifty_chg = index_perf.get("Nifty 50", {}).get("change", 0)
     bearish   = nifty_chg < 0
@@ -738,6 +851,12 @@ def build_email(index_perf, falling, gold_silver, div_data, ai_text, trade_date)
       <div style="font-size:13px;font-weight:600;color:#2980b9;margin-bottom:4px">🔵 Mid Cap Losers</div>
       {stock_table(falling.get("midcap", []), 0.0)}
     </div>
+
+    <h2 style="font-size:15px;color:#1e3a8a;margin:22px 0 4px">📈 Mutual Fund NAVs (Direct Growth)</h2>
+    <p style="font-size:12px;color:#888;margin:0 0 8px">
+      Checking your mutual fund NAVs helps you see if your long-term wealth is growing.
+    </p>
+    {mf_table_section(mf_data)}
 
     <h2 style="font-size:15px;color:#1a3a6b;margin:0 0 4px">🌈 Other Ways to Invest — Not Just Stocks</h2>
     <p style="font-size:12px;color:#888;margin:0 0 8px">
@@ -835,14 +954,17 @@ def run():
     print("🌈 Processing diversification data...")
     div_data = fetch_diversification_data(dfs[0][0])
 
-    print("🤖 Getting Gemini AI analysis...")
-    ai_text = get_ai_analysis(index_perf, falling, gold_silver, div_data)
+    print("📊 Fetching Mutual Fund NAVs from AMFI...")
+    mf_data = fetch_amfi_navs()
+
+    print("🤖 getting Gemini AI analysis...")
+    ai_text = get_ai_analysis(index_perf, falling, gold_silver, div_data, mf_data)
 
     print("📧 Sending email...")
     nifty_chg = index_perf.get("Nifty 50", {}).get("change", 0)
     date_str  = datetime.now(IST).strftime("%d %b")
     subject   = f"🌅 {date_str} Morning Brief: Nifty {nifty_chg:+.2f}% | Your Daily Investment Update"
-    html      = build_email(index_perf, falling, gold_silver, div_data, ai_text, trade_date)
+    html      = build_email(index_perf, falling, gold_silver, div_data, mf_data, ai_text, trade_date)
     send_email(html, subject)
 
     print("✅ Done!\n")
